@@ -7,6 +7,7 @@ import (
 
 	"github.com/ctiller15/gator/internal/config"
 	"github.com/ctiller15/gator/internal/database"
+	"github.com/ctiller15/gator/internal/rss"
 	"github.com/google/uuid"
 )
 
@@ -42,6 +43,9 @@ func NewCommands() *commands {
 	newCommands.register("register", handlerRegister)
 	newCommands.register("reset", handlerReset)
 	newCommands.register("users", handlerGetUsers)
+	newCommands.register("agg", handlerAggregation)
+	newCommands.register("addfeed", handlerAddFeed)
+	newCommands.register("feeds", handlerGetFeeds)
 
 	return &newCommands
 }
@@ -53,6 +57,67 @@ func NewState(cfg *config.Config, db *database.Queries) *state {
 	}
 
 	return &newState
+}
+
+func handlerGetFeeds(s *state, cmd command) error {
+	ctx := context.Background()
+	feedData, err := s.db.GetFeeds(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, feed := range feedData {
+		fmt.Printf("%+v\n", feed)
+	}
+
+	return nil
+}
+
+func handlerAddFeed(s *state, cmd command) error {
+	if len(cmd.args) < 2 {
+		return fmt.Errorf("must provide both a name and a url")
+	}
+
+	feedName := cmd.args[0]
+	feedUrl := cmd.args[1]
+
+	ctx := context.Background()
+
+	username := s.cfg.CurrentUserName
+	userData, err := s.db.GetUser(ctx, username)
+	if err != nil {
+		return err
+	}
+
+	currentTime := time.Now()
+	feedParams := database.CreateFeedParams{
+		ID:        uuid.New(),
+		CreatedAt: currentTime,
+		UpdatedAt: currentTime,
+		Name:      feedName,
+		Url:       feedUrl,
+		UserID:    userData.ID,
+	}
+
+	feed, err := s.db.CreateFeed(ctx, feedParams)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("feed: %+v\n", feed)
+	return nil
+}
+
+func handlerAggregation(s *state, cmd command) error {
+	ctx := context.Background()
+	feedUrl := "https://www.wagslane.dev/index.xml"
+	feed, err := rss.FetchFeed(ctx, feedUrl)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%+v\n", feed)
+	return nil
 }
 
 func handlerLogin(s *state, cmd command) error {
