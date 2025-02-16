@@ -46,6 +46,8 @@ func NewCommands() *commands {
 	newCommands.register("agg", handlerAggregation)
 	newCommands.register("addfeed", handlerAddFeed)
 	newCommands.register("feeds", handlerGetFeeds)
+	newCommands.register("follow", handlerFollow)
+	newCommands.register("following", handlerFollowing)
 
 	return &newCommands
 }
@@ -57,6 +59,59 @@ func NewState(cfg *config.Config, db *database.Queries) *state {
 	}
 
 	return &newState
+}
+
+func handlerFollowing(s *state, cmd command) error {
+	ctx := context.Background()
+
+	userFeeds, err := s.db.GetFeedFollowsForUser(ctx, s.cfg.CurrentUserName)
+	if err != nil {
+		return err
+	}
+
+	for _, feed := range userFeeds {
+		fmt.Printf("%s\n", feed.FeedName)
+	}
+
+	return nil
+}
+
+func handlerFollow(s *state, cmd command) error {
+	if len(cmd.args) == 0 {
+		return fmt.Errorf("must provide url")
+	}
+
+	ctx := context.Background()
+
+	url := cmd.args[0]
+
+	current_time := time.Now()
+
+	user, err := s.db.GetUser(ctx, s.cfg.CurrentUserName)
+	if err != nil {
+		return err
+	}
+
+	feed, err := s.db.GetFeedByUrl(ctx, url)
+	if err != nil {
+		return err
+	}
+
+	args := database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: current_time,
+		UpdatedAt: current_time,
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	}
+
+	feedFollow, err := s.db.CreateFeedFollow(ctx, args)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("feed name: %s, feed user: %s", feedFollow.FeedName, feedFollow.UserName)
+	return nil
 }
 
 func handlerGetFeeds(s *state, cmd command) error {
@@ -96,10 +151,21 @@ func handlerAddFeed(s *state, cmd command) error {
 		UpdatedAt: currentTime,
 		Name:      feedName,
 		Url:       feedUrl,
-		UserID:    userData.ID,
 	}
 
 	feed, err := s.db.CreateFeed(ctx, feedParams)
+	if err != nil {
+		return err
+	}
+
+	feedFollowParams := database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: currentTime,
+		UpdatedAt: currentTime,
+		UserID:    userData.ID,
+		FeedID:    feed.ID,
+	}
+	_, err = s.db.CreateFeedFollow(ctx, feedFollowParams)
 	if err != nil {
 		return err
 	}
@@ -179,6 +245,11 @@ func handlerReset(s *state, cmd command) error {
 
 	err := s.db.DeleteUser(ctx)
 
+	if err != nil {
+		return err
+	}
+
+	err = s.db.DeleteFeeds(ctx)
 	if err != nil {
 		return err
 	}
