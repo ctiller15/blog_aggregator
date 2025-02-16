@@ -40,6 +40,8 @@ func NewCommands() *commands {
 
 	newCommands.register("login", handlerLogin)
 	newCommands.register("register", handlerRegister)
+	newCommands.register("reset", handlerReset)
+	newCommands.register("users", handlerGetUsers)
 
 	return &newCommands
 }
@@ -103,6 +105,39 @@ func handlerRegister(s *state, cmd command) error {
 
 	fmt.Printf("user %s has been created\n", cmd.args[0])
 	fmt.Printf("%+v\n", user)
+
+	return nil
+}
+
+func handlerReset(s *state, cmd command) error {
+	ctx := context.Background()
+
+	err := s.db.DeleteUser(ctx)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Deletion successful")
+	return nil
+}
+
+func handlerGetUsers(s *state, cmd command) error {
+	ctx := context.Background()
+
+	users, err := s.db.GetUsers(ctx)
+
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		if user.Name == s.cfg.CurrentUserName {
+			fmt.Printf("* %s (current)\n", user.Name)
+		} else {
+			fmt.Printf("* %s\n", user.Name)
+		}
+	}
 
 	return nil
 }
