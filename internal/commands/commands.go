@@ -44,10 +44,11 @@ func NewCommands() *commands {
 	newCommands.register("reset", handlerReset)
 	newCommands.register("users", handlerGetUsers)
 	newCommands.register("agg", handlerAggregation)
-	newCommands.register("addfeed", handlerAddFeed)
+	newCommands.register("addfeed", middlewareLoggedIn(handlerAddFeed))
 	newCommands.register("feeds", handlerGetFeeds)
-	newCommands.register("follow", handlerFollow)
-	newCommands.register("following", handlerFollowing)
+	newCommands.register("follow", middlewareLoggedIn(handlerFollow))
+	newCommands.register("following", middlewareLoggedIn(handlerFollowing))
+	newCommands.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 
 	return &newCommands
 }
@@ -61,10 +62,10 @@ func NewState(cfg *config.Config, db *database.Queries) *state {
 	return &newState
 }
 
-func handlerFollowing(s *state, cmd command) error {
+func handlerFollowing(s *state, cmd command, user database.User) error {
 	ctx := context.Background()
 
-	userFeeds, err := s.db.GetFeedFollowsForUser(ctx, s.cfg.CurrentUserName)
+	userFeeds, err := s.db.GetFeedFollowsForUser(ctx, user.Name)
 	if err != nil {
 		return err
 	}
@@ -76,21 +77,16 @@ func handlerFollowing(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollow(s *state, cmd command) error {
+func handlerFollow(s *state, cmd command, user database.User) error {
+	ctx := context.Background()
+
 	if len(cmd.args) == 0 {
 		return fmt.Errorf("must provide url")
 	}
 
-	ctx := context.Background()
-
 	url := cmd.args[0]
 
 	current_time := time.Now()
-
-	user, err := s.db.GetUser(ctx, s.cfg.CurrentUserName)
-	if err != nil {
-		return err
-	}
 
 	feed, err := s.db.GetFeedByUrl(ctx, url)
 	if err != nil {
@@ -128,21 +124,35 @@ func handlerGetFeeds(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	ctx := context.Background()
+
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("must provide a feed url")
+	}
+
+	feedUrl := cmd.args[0]
+	deleteFeedFollowByUrlParams := database.DeleteFeedFollowByUrlParams{
+		UserID: user.ID,
+		Url:    feedUrl,
+	}
+	err := s.db.DeleteFeedFollowByUrl(ctx, deleteFeedFollowByUrlParams)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func handlerAddFeed(s *state, cmd command, user database.User) error {
+	ctx := context.Background()
+
 	if len(cmd.args) < 2 {
 		return fmt.Errorf("must provide both a name and a url")
 	}
 
 	feedName := cmd.args[0]
 	feedUrl := cmd.args[1]
-
-	ctx := context.Background()
-
-	username := s.cfg.CurrentUserName
-	userData, err := s.db.GetUser(ctx, username)
-	if err != nil {
-		return err
-	}
 
 	currentTime := time.Now()
 	feedParams := database.CreateFeedParams{
@@ -162,7 +172,7 @@ func handlerAddFeed(s *state, cmd command) error {
 		ID:        uuid.New(),
 		CreatedAt: currentTime,
 		UpdatedAt: currentTime,
-		UserID:    userData.ID,
+		UserID:    user.ID,
 		FeedID:    feed.ID,
 	}
 	_, err = s.db.CreateFeedFollow(ctx, feedFollowParams)
@@ -295,4 +305,17 @@ func (c *commands) Run(s *state, cmd command) error {
 	}
 
 	return nil
+}
+
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
+	ctx := context.Background()
+
+	return func(s *state, cmd command) error {
+		user, err := s.db.GetUser(ctx, s.cfg.CurrentUserName)
+		if err != nil {
+			return err
+		}
+
+		return handler(s, cmd, user)
+	}
 }
