@@ -45,7 +45,7 @@ touch ~/.gatorconfig.json
 ## Usage
 
 ### Commands
-All commands can be run with `go run . {command}`
+All commands can be run with `gator {command}`
 "login" - logs in a user
 "register" - registers a user
 "reset" - resets the database
