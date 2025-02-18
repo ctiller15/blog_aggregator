@@ -46,6 +46,7 @@ touch ~/.gatorconfig.json
 
 ### Commands
 All commands can be run with `gator {command}`
+```
 "login" - logs in a user
 "register" - registers a user
 "reset" - resets the database
@@ -57,7 +58,7 @@ All commands can be run with `gator {command}`
 "following" - lists feeds a user is following
 "unfollow" - unfollows a feed for a user
 "browse" - browses a given number of feeds
-
+```
 ### Plumbing
 ```
 # generate models
